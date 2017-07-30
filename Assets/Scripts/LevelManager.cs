@@ -1,14 +1,24 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using System.Linq;
+using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 
 public class LevelManager : MonoBehaviour 
 {
     protected int sizex;
     protected int sizey;
 
+    public Camera camera;
+    public AudioClip goalSfx;
+    public AudioClip moveBoxSfx;
+    public AudioClip buttonSfx;
+    public AudioClip powerOutSfx;
 
-    public Texture2D levelMap;
+    int maxPower = 20;
+    public int power = 20;
+    int levelCounter = 0;
 
     public GameObject floorPrefab;
 
@@ -19,6 +29,10 @@ public class LevelManager : MonoBehaviour
 
     public GameObject player;
 
+    public Text levelText;
+    public Text powerText;
+    public Image powerFill;
+
     [System.Serializable]
     public struct ColorPrefab
     {
@@ -26,9 +40,17 @@ public class LevelManager : MonoBehaviour
         public GameObject prefab;
     }
 
+    [System.Serializable]
+    public struct levelInfo
+    {
+        public int levelPower;
+        public Texture2D levelMap;
+    }
+
     public Color32 playerColor;
     public Color32 boxColor;
     public ColorPrefab[] prefabs;
+    public levelInfo[] levels;
 
     public Dictionary<Color32, GameObject> colorPrefabDict;
 
@@ -48,10 +70,31 @@ public class LevelManager : MonoBehaviour
         {
             colorPrefabDict.Add(cp.color, cp.prefab);
         }
-        sizex = levelMap.width;
-        sizey = levelMap.height;
+
+        EndLevel();
+    }
+
+    void Update()
+    {
+        MovePlayer();
+        if (playerMoving == false)
+        {
+            if(Input.GetKeyDown(KeyCode.R))
+            {
+                AudioManager.instance.PlayClip(goalSfx);
+                EndLevel();   
+            }
+        }
+    }
+
+    void LoadLevel(Texture2D level)
+    {
+        sizex = level.width;
+        sizey = level.height;
         tiles = new Tile[sizex,sizey];
-        Color32[] map = levelMap.GetPixels32();
+
+        camera.transform.position = new Vector3(sizex / 2, sizey / 2, -10);
+        Color32[] map = level.GetPixels32();
 
         for (int y = 0; y < sizey; y++)
         {
@@ -155,92 +198,173 @@ public class LevelManager : MonoBehaviour
         } 
     }
 
-    void Update()
-    {
-        MovePlayer();
-    }
-
     void MovePlayer()
     {
-        if (playerMoving == false)
+        if (power > 0)
         {
-            if(Input.GetKeyDown(KeyCode.UpArrow))
-            {  
-                //Move Up 1 Space.
-                if (!((tiles[playerPosX, playerPosY + 1].type == Tile.TileType.wall) 
-                    || (tiles[playerPosX, playerPosY + 1].currentObject != null && tiles[playerPosX, playerPosY + 1].currentObject.tag.Equals("Box") && tiles[playerPosX, playerPosY + 2].type == Tile.TileType.wall)
-                    || (tiles[playerPosX, playerPosY + 1].currentObject != null && tiles[playerPosX, playerPosY + 1].currentObject.tag.Equals("Box") && tiles[playerPosX, playerPosY + 2].currentObject != null && tiles[playerPosX, playerPosY + 2].currentObject.tag.Equals("Box"))))
-                {
-                    playerPosY += 1;
-                    player.transform.eulerAngles = new Vector3(0, 0, 90);                    
-                    StartCoroutine(movePlayer(tiles[playerPosX, playerPosY].transform.position, 2f));
-                    if (tiles[playerPosX, playerPosY].currentObject != null && tiles[playerPosX, playerPosY].currentObject.tag.Equals("Box"))
-                    {
-                        GameObject box = tiles[playerPosX, playerPosY].currentObject;
-                        StartCoroutine(moveBox(box, tiles[playerPosX, playerPosY + 1].transform.position, 2f));
-                        tiles[playerPosX, playerPosY].currentObject = null;
-                        tiles[playerPosX, playerPosY + 1].currentObject = box;
-                    }
-                }
-            }
-            else if(Input.GetKeyDown(KeyCode.DownArrow))
+            if (playerMoving == false)
             {
-                //Move Down 1 Space.
-                if (!((tiles[playerPosX, playerPosY - 1].type == Tile.TileType.wall) 
-                    || (tiles[playerPosX, playerPosY - 1].currentObject != null && tiles[playerPosX, playerPosY - 1].currentObject.tag.Equals("Box") && tiles[playerPosX, playerPosY - 2].type == Tile.TileType.wall)
-                    || (tiles[playerPosX, playerPosY - 1].currentObject != null && tiles[playerPosX, playerPosY - 1].currentObject.tag.Equals("Box") && tiles[playerPosX, playerPosY - 2].currentObject != null && tiles[playerPosX, playerPosY - 2].currentObject.tag.Equals("Box"))))
-                {
-                    playerPosY -= 1;
-                    player.transform.eulerAngles = new Vector3(0, 0, 270); 
-                    StartCoroutine(movePlayer(tiles[playerPosX, playerPosY].transform.position, 2f));
-                    if (tiles[playerPosX, playerPosY].currentObject != null && tiles[playerPosX, playerPosY].currentObject.tag.Equals("Box"))
+                if(Input.GetKeyDown(KeyCode.UpArrow))
+                {  
+                    //Move Up 1 Space.
+                    if (!((tiles[playerPosX, playerPosY + 1].type == Tile.TileType.wall || tiles[playerPosX, playerPosY + 1].isClosed == true )
+                        || (tiles[playerPosX, playerPosY + 1].currentObject != null && tiles[playerPosX, playerPosY + 1].currentObject.tag.Equals("Box") && (tiles[playerPosX, playerPosY + 2].type == Tile.TileType.wall || tiles[playerPosX, playerPosY + 2].isClosed == true))
+                        || (tiles[playerPosX, playerPosY + 1].currentObject != null && tiles[playerPosX, playerPosY + 1].currentObject.tag.Equals("Box") && tiles[playerPosX, playerPosY + 2].currentObject != null && tiles[playerPosX, playerPosY + 2].currentObject.tag.Equals("Box"))))
                     {
-                        GameObject box = tiles[playerPosX, playerPosY].currentObject;
-                        StartCoroutine(moveBox(box, tiles[playerPosX, playerPosY - 1].transform.position, 2f));
-                        tiles[playerPosX, playerPosY].currentObject = null;
-                        tiles[playerPosX, playerPosY - 1].currentObject = box;
+                        if (tiles[playerPosX, playerPosY].type == Tile.TileType.weighedbutton)
+                        {
+                            for (int x = 0; x < sizex; x++)
+                            {
+                                for (int y = 0; y < sizey; y++)
+                                {
+                                    if (tiles[playerPosX, playerPosY].pairNumber == tiles[x, y].pairNumber)
+                                    {
+                                        if (tiles[x, y].type == Tile.TileType.door)
+                                        {
+                                            tiles[x, y].isClosed = true;
+                                        }
+                                        tiles[x, y].GetComponent<SpriteRenderer>().sprite = tiles[x, y].normalSprite;
+                                        AudioManager.instance.PlayClip(buttonSfx);
+                                    }
+                                }
+                            }
+                        }
+                        playerPosY += 1;
+                        player.transform.eulerAngles = new Vector3(0, 0, 90);                    
+                        StartCoroutine(movePlayer(tiles[playerPosX, playerPosY].transform.position, 2f));
+
+                        if (tiles[playerPosX, playerPosY].currentObject != null && tiles[playerPosX, playerPosY].currentObject.tag.Equals("Box"))
+                        {
+                            AudioManager.instance.PlayClip(moveBoxSfx);
+                            GameObject box = tiles[playerPosX, playerPosY].currentObject;
+                            StartCoroutine(moveBox(box, tiles[playerPosX, playerPosY + 1].transform.position, 2f, tiles[playerPosX, playerPosY + 1]));
+             
+                            tiles[playerPosX, playerPosY].currentObject = null;
+                            tiles[playerPosX, playerPosY + 1].currentObject = box;
+                        }
                     }
                 }
-            }
-            else if(Input.GetKeyDown(KeyCode.LeftArrow))
-            {
-                //Move Left 1 Space.
-                if (!((tiles[playerPosX - 1, playerPosY].type == Tile.TileType.wall) 
-                    || (tiles[playerPosX - 1, playerPosY].currentObject != null && tiles[playerPosX - 1, playerPosY].currentObject.tag.Equals("Box") && tiles[playerPosX - 2, playerPosY].type == Tile.TileType.wall)
-                    || (tiles[playerPosX - 1, playerPosY].currentObject != null && tiles[playerPosX - 1, playerPosY].currentObject.tag.Equals("Box") && tiles[playerPosX - 2, playerPosY].currentObject != null && tiles[playerPosX - 2, playerPosY].currentObject.tag.Equals("Box"))))
+                else if(Input.GetKeyDown(KeyCode.DownArrow))
                 {
-                    playerPosX -= 1;
-                    player.transform.eulerAngles = new Vector3(0, 0, 180); 
-                    StartCoroutine(movePlayer(tiles[playerPosX, playerPosY].transform.position, 2f));
-                    if (tiles[playerPosX, playerPosY].currentObject != null && tiles[playerPosX, playerPosY].currentObject.tag.Equals("Box"))
+                    //Move Down 1 Space.
+                    if (!((tiles[playerPosX, playerPosY - 1].type == Tile.TileType.wall || tiles[playerPosX, playerPosY - 1].isClosed == true) 
+                        || (tiles[playerPosX, playerPosY - 1].currentObject != null && tiles[playerPosX, playerPosY - 1].currentObject.tag.Equals("Box") && (tiles[playerPosX, playerPosY - 2].type == Tile.TileType.wall || tiles[playerPosX, playerPosY - 2].isClosed == true))
+                        || (tiles[playerPosX, playerPosY - 1].currentObject != null && tiles[playerPosX, playerPosY - 1].currentObject.tag.Equals("Box") && tiles[playerPosX, playerPosY - 2].currentObject != null && tiles[playerPosX, playerPosY - 2].currentObject.tag.Equals("Box"))))
                     {
-                        GameObject box = tiles[playerPosX, playerPosY].currentObject;
-                        StartCoroutine(moveBox(box, tiles[playerPosX - 1, playerPosY].transform.position, 2f));
-                        tiles[playerPosX, playerPosY].currentObject = null;
-                        tiles[playerPosX - 1, playerPosY].currentObject = box;
+                        if (tiles[playerPosX, playerPosY].type == Tile.TileType.weighedbutton)
+                        {
+                            for (int x = 0; x < sizex; x++)
+                            {
+                                for (int y = 0; y < sizey; y++)
+                                {
+                                    if (tiles[playerPosX, playerPosY].pairNumber == tiles[x, y].pairNumber)
+                                    {
+                                        if (tiles[x, y].type == Tile.TileType.door)
+                                        {
+                                            tiles[x, y].isClosed = true;
+                                        }
+                                        tiles[x, y].GetComponent<SpriteRenderer>().sprite = tiles[x, y].normalSprite;
+                                        AudioManager.instance.PlayClip(buttonSfx);
+                                    }
+                                }
+                            }
+                        }
+                        playerPosY -= 1;
+                        player.transform.eulerAngles = new Vector3(0, 0, 270); 
+                        StartCoroutine(movePlayer(tiles[playerPosX, playerPosY].transform.position, 2f));
+                        if (tiles[playerPosX, playerPosY].currentObject != null && tiles[playerPosX, playerPosY].currentObject.tag.Equals("Box"))
+                        {
+                            AudioManager.instance.PlayClip(moveBoxSfx);
+                            GameObject box = tiles[playerPosX, playerPosY].currentObject;
+                            StartCoroutine(moveBox(box, tiles[playerPosX, playerPosY - 1].transform.position, 2f, tiles[playerPosX, playerPosY - 1]));
+                            tiles[playerPosX, playerPosY].currentObject = null;
+                            tiles[playerPosX, playerPosY - 1].currentObject = box;
+                        }
                     }
                 }
-            }
-            else if(Input.GetKeyDown(KeyCode.RightArrow))
-            {
-                //Move Right 1 Space.
-                if (!((tiles[playerPosX + 1, playerPosY].type == Tile.TileType.wall) 
-                    || (tiles[playerPosX + 1, playerPosY].currentObject != null && tiles[playerPosX + 1, playerPosY].currentObject.tag.Equals("Box") && tiles[playerPosX + 2, playerPosY].type == Tile.TileType.wall)
-                    || (tiles[playerPosX + 1, playerPosY].currentObject != null && tiles[playerPosX + 1, playerPosY].currentObject.tag.Equals("Box") && tiles[playerPosX + 2, playerPosY].currentObject != null && tiles[playerPosX + 2, playerPosY].currentObject.tag.Equals("Box"))))
+                else if(Input.GetKeyDown(KeyCode.LeftArrow))
                 {
-                    playerPosX += 1;
-                    player.transform.eulerAngles = new Vector3(0, 0, 0); 
-                    StartCoroutine(movePlayer(tiles[playerPosX, playerPosY].transform.position, 2f));
-                    if (tiles[playerPosX, playerPosY].currentObject != null && tiles[playerPosX, playerPosY].currentObject.tag.Equals("Box"))
+                    //Move Left 1 Space.
+                    if (!((tiles[playerPosX - 1, playerPosY].type == Tile.TileType.wall || tiles[playerPosX - 1, playerPosY].isClosed == true) 
+                        || (tiles[playerPosX - 1, playerPosY].currentObject != null && tiles[playerPosX - 1, playerPosY].currentObject.tag.Equals("Box") && (tiles[playerPosX - 2, playerPosY].type == Tile.TileType.wall || tiles[playerPosX - 2, playerPosY].isClosed == true))
+                        || (tiles[playerPosX - 1, playerPosY].currentObject != null && tiles[playerPosX - 1, playerPosY].currentObject.tag.Equals("Box") && tiles[playerPosX - 2, playerPosY].currentObject != null && tiles[playerPosX - 2, playerPosY].currentObject.tag.Equals("Box"))))
                     {
-                        GameObject box = tiles[playerPosX, playerPosY].currentObject;
-                        StartCoroutine(moveBox(box, tiles[playerPosX + 1, playerPosY].transform.position, 2f));
-                        tiles[playerPosX, playerPosY].currentObject = null;
-                        tiles[playerPosX + 1, playerPosY].currentObject = box;
+                        if (tiles[playerPosX, playerPosY].type == Tile.TileType.weighedbutton)
+                        {
+                            for (int x = 0; x < sizex; x++)
+                            {
+                                for (int y = 0; y < sizey; y++)
+                                {
+                                    if (tiles[playerPosX, playerPosY].pairNumber == tiles[x, y].pairNumber)
+                                    {
+                                        if (tiles[x, y].type == Tile.TileType.door)
+                                        {
+                                            tiles[x, y].isClosed = true;
+                                        }
+                                        tiles[x, y].GetComponent<SpriteRenderer>().sprite = tiles[x, y].normalSprite;
+                                        AudioManager.instance.PlayClip(buttonSfx);
+                                    }
+                                }
+                            }
+                        }
+                        playerPosX -= 1;
+                        player.transform.eulerAngles = new Vector3(0, 0, 180); 
+                        StartCoroutine(movePlayer(tiles[playerPosX, playerPosY].transform.position, 2f));
+
+                        if (tiles[playerPosX, playerPosY].currentObject != null && tiles[playerPosX, playerPosY].currentObject.tag.Equals("Box"))
+                        {
+                            AudioManager.instance.PlayClip(moveBoxSfx);
+                            GameObject box = tiles[playerPosX, playerPosY].currentObject;
+                            StartCoroutine(moveBox(box, tiles[playerPosX - 1, playerPosY].transform.position, 2f, tiles[playerPosX - 1, playerPosY]));
+                            tiles[playerPosX, playerPosY].currentObject = null;
+                            tiles[playerPosX - 1, playerPosY].currentObject = box;
+                        }
                     }
                 }
+                else if(Input.GetKeyDown(KeyCode.RightArrow))
+                {
+                    //Move Right 1 Space.
+                    if (!((tiles[playerPosX + 1, playerPosY].type == Tile.TileType.wall || tiles[playerPosX + 1, playerPosY].isClosed == true) 
+                        || (tiles[playerPosX + 1, playerPosY].currentObject != null && tiles[playerPosX + 1, playerPosY].currentObject.tag.Equals("Box") && (tiles[playerPosX + 2, playerPosY].type == Tile.TileType.wall || tiles[playerPosX + 2, playerPosY].isClosed == true))
+                        || (tiles[playerPosX + 1, playerPosY].currentObject != null && tiles[playerPosX + 1, playerPosY].currentObject.tag.Equals("Box") && tiles[playerPosX + 2, playerPosY].currentObject != null && tiles[playerPosX + 2, playerPosY].currentObject.tag.Equals("Box"))))
+                    {
+                        if (tiles[playerPosX, playerPosY].type == Tile.TileType.weighedbutton)
+                        {
+                            for (int x = 0; x < sizex; x++)
+                            {
+                                for (int y = 0; y < sizey; y++)
+                                {
+                                    if (tiles[playerPosX, playerPosY].pairNumber == tiles[x, y].pairNumber)
+                                    {
+                                        if (tiles[x, y].type == Tile.TileType.door)
+                                        {
+                                            tiles[x, y].isClosed = true;
+                                        }
+                                        tiles[x, y].GetComponent<SpriteRenderer>().sprite = tiles[x, y].normalSprite;
+                                        AudioManager.instance.PlayClip(buttonSfx);
+                                    }
+                                }
+                            }
+                        }
+                        playerPosX += 1;
+                        player.transform.eulerAngles = new Vector3(0, 0, 0); 
+                        StartCoroutine(movePlayer(tiles[playerPosX, playerPosY].transform.position, 2f));
+                        if (tiles[playerPosX, playerPosY].currentObject != null && tiles[playerPosX, playerPosY].currentObject.tag.Equals("Box"))
+                        {
+                            GameObject box = tiles[playerPosX, playerPosY].currentObject;
+                            AudioManager.instance.PlayClip(moveBoxSfx);
+                            StartCoroutine(moveBox(box, tiles[playerPosX + 1, playerPosY].transform.position, 2f, tiles[playerPosX + 1, playerPosY]));
+
+                            tiles[playerPosX, playerPosY].currentObject = null;
+                            tiles[playerPosX + 1, playerPosY].currentObject = box;
+                        }
+                    }
+                }
+
             }
+               
         }
+
 
     }
 
@@ -249,6 +373,36 @@ public class LevelManager : MonoBehaviour
         playerMoving = true;
         player.GetComponentsInChildren<Animator>()[1].SetBool("Moving", true);
 
+        if (tiles[playerPosX, playerPosY].type == Tile.TileType.button)
+        {
+            for (int x = 0; x < sizex; x++)
+            {
+                for (int y = 0; y < sizey; y++)
+                {
+                    if (tiles[playerPosX, playerPosY].pairNumber == tiles[x, y].pairNumber)
+                    {
+                        tiles[x, y].isClosed = false;
+                        tiles[x, y].GetComponent<SpriteRenderer>().sprite = tiles[x, y].offSprite;
+                        AudioManager.instance.PlayClip(buttonSfx);
+                    }
+                }
+            }
+        }
+        else if (tiles[playerPosX, playerPosY].type == Tile.TileType.weighedbutton)
+        {
+            for (int x = 0; x < sizex; x++)
+            {
+                for (int y = 0; y < sizey; y++)
+                {
+                    if (tiles[playerPosX, playerPosY].pairNumber == tiles[x, y].pairNumber)
+                    {
+                        tiles[x, y].isClosed = false;
+                        tiles[x, y].GetComponent<SpriteRenderer>().sprite = tiles[x, y].offSprite;
+                        AudioManager.instance.PlayClip(buttonSfx);
+                    }
+                }
+            }
+        }
         while (Vector3.Distance(player.transform.position, newPos) > 0)
         {
             float step = speed * Time.deltaTime;
@@ -259,21 +413,100 @@ public class LevelManager : MonoBehaviour
         playerMoving = false;
         player.GetComponentsInChildren<Animator>()[1].SetBool("Moving", false);
 
-        if(tiles[playerPosX, playerPosY].type == Tile.TileType.goal)
+        power -= 1;
+        powerFill.fillAmount = ((float)power / (float)maxPower);
+        powerText.text = "Power: " + power;
+
+        if (tiles[playerPosX, playerPosY].type == Tile.TileType.goal)
         {
-            Debug.Log("You Win!");
+            AudioManager.instance.PlayClip(goalSfx);
+            levelCounter++;
+            EndLevel();
+        }
+            
+        if (power == 0)
+        {
+            AudioManager.instance.PlayClip(powerOutSfx);
+            handleFail();
         }
     }
-    IEnumerator moveBox(GameObject box, Vector3 newPos, float speed)
+    IEnumerator moveBox(GameObject box, Vector3 newPos, float speed, Tile tile)
     {
+        if (tile.type == Tile.TileType.button)
+        {
+            for (int x = 0; x < sizex; x++)
+            {
+                for (int y = 0; y < sizey; y++)
+                {
+                    if (tile.pairNumber == tiles[x, y].pairNumber)
+                    {
+                        tiles[x, y].isClosed = false;
+                        tiles[x, y].GetComponent<SpriteRenderer>().sprite = tiles[x, y].offSprite;
+                        AudioManager.instance.PlayClip(buttonSfx);
+                    }
+                }
+            }
+        }
+        else if (tile.type == Tile.TileType.weighedbutton)
+        {
+            for (int x = 0; x < sizex; x++)
+            {
+                for (int y = 0; y < sizey; y++)
+                {
+                    if (tile.pairNumber == tiles[x, y].pairNumber)
+                    {
+                        tiles[x, y].isClosed = false;
+                        tiles[x, y].GetComponent<SpriteRenderer>().sprite = tiles[x, y].offSprite;
+                        AudioManager.instance.PlayClip(buttonSfx);
+                    }
+                }
+            }
+        }
         while (Vector3.Distance(box.transform.position, newPos) > 0)
         {
             float step = speed * Time.deltaTime;
             box.transform.position = Vector3.MoveTowards(box.transform.position, newPos, step);
             yield return null;
         }
+            
+    }
+
+    void handleFail()
+    {
+        player.GetComponentsInChildren<Light>()[0].enabled = false;
+        player.GetComponentsInChildren<Light>()[1].enabled = false;
+
 
     }
+
+    void EndLevel()
+    {
+        StopCoroutine("movePlayer");
+        StopCoroutine("moveBox");
+        if (levelCounter + 1 > levels.Count())
+        {
+            //Do Victory Screen
+            SceneManager.LoadScene(3);
+        }
+        else
+        {
+            foreach (GameObject o in Object.FindObjectsOfType<GameObject>())
+            {
+                if(!o.tag.Equals("GameController"))
+                {
+                    Destroy(o);
+                }
+            }
+            power = levels[levelCounter].levelPower;
+            maxPower = power;
+            powerFill.fillAmount = ((float)power / (float)maxPower);
+            powerText.text = "Power: " + power;
+            levelText.text = "Level " + (levelCounter + 1);
+            LoadLevel(levels[levelCounter].levelMap);
+        }
+    }
 }
+
+
 
 

@@ -22,4 +22,5 @@ public class Tile : MonoBehaviour {
     public Sprite offSprite;
 
     public int pairNumber;
+
 }
